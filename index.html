@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lern-App Geschichte</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  
+  <div class="container">
+    <div id="loginScreen">
+      <h1>📚 Lern-App Geschichte</h1>
+      <h2 class="arabic">تطبيق التعلم - التاريخ</h2>
+      
+      <p class="welcome-text">Willkommen! Wie heißt du?</p>
+      
+      <input type="text" id="usernameInput" placeholder="Dein Name" />
+      <div id="loginError" class="error hidden"></div>
+      
+      <button class="btn btn-primary" onclick="login()">Los geht's! 🚀</button>
+    </div>
+    
+    <div id="mainMenu" class="hidden">
+      <h1>📚 Lern-App</h1>
+      <h2 id="welcomeText"></h2>
+      
+      <button class="btn btn-success" onclick="showLernkartenModus()">🎴 Lernkarten üben</button>
+      <button class="btn btn-warning" onclick="showQuizModus()">🎯 Quiz machen</button>
+      <button class="btn btn-info" onclick="showStatistik()">📊 Fortschritt ansehen</button>
+      <button class="btn btn-secondary" onclick="logout()">👋 Abmelden</button>
+    </div>
+    
+    <div id="lernkartenModusScreen" class="hidden">
+      <h1>🎴 Lernkarten</h1>
+      <h2>Welcher Modus?</h2>
+      
+      <button class="btn btn-primary" onclick="showKapitelWahl('ar')">🇸🇦 Nur Arabisch</button>
+      <button class="btn btn-primary" onclick="showKapitelWahl('ar_de')">🇸🇦🇩🇪 Arabisch + Deutsch</button>
+      <button class="btn btn-secondary" onclick="showMainMenu()">← Zurück</button>
+    </div>
+    
+    <div id="kapitelWahlScreen" class="hidden">
+      <h1>📖 Kapitel wählen</h1>
+      <div id="kapitelButtons"></div>
+      <button class="btn btn-secondary" onclick="goBack()">← Zurück</button>
+    </div>
+    
+    <div id="lernkartenScreen" class="hidden">
+      <div id="lernkartenContent"></div>
+    </div>
+    
+    <div id="quizModusScreen" class="hidden">
+      <h1>🎯 Quiz</h1>
+      <h2>Welcher Modus?</h2>
+      
+      <button class="btn btn-warning" onclick="showQuizKapitelWahl('de_ar')">🇩🇪🇸🇦 Deutsch + Arabisch</button>
+      <button class="btn btn-warning" onclick="showQuizKapitelWahl('ar')">🇸🇦 Nur Arabisch</button>
+      <button class="btn btn-secondary" onclick="showMainMenu()">← Zurück</button>
+    </div>
+    
+    <div id="quizScreen" class="hidden">
+      <div id="quizContent"></div>
+    </div>
+    
+    <div id="statistikScreen" class="hidden">
+      <h1>📊 Dein Fortschritt</h1>
+      <div id="statistikContent"></div>
+      <button class="btn btn-secondary" onclick="showMainMenu()">← Zurück</button>
+    </div>
+    
+    <div id="loader" class="loader hidden">
+      <div class="spinner"></div>
+      <p>Lädt...</p>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  
+</body>
+</html>
