@@ -1,10 +1,12 @@
+// Supabase Client initialisieren
 const { createClient } = supabase;
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 let currentUser = '';
 let alleLernkarten = [];
 let alleQuizDeAr = [];
 let alleQuizAr = [];
-let fortschritt = {};
+let fortschritt = { gelernteKarten: [] };
 let currentModus = '';
 let currentQuizTyp = '';
 let currentKapitel = 0;
@@ -36,7 +38,7 @@ function hideError() {
   document.getElementById('loginError').classList.add('hidden');
 }
 
-function login() {
+async function login() {
   const username = document.getElementById('usernameInput').value.trim();
   
   if (!username) {
@@ -47,52 +49,76 @@ function login() {
   hideError();
   showLoader();
   
-  fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'loginOrRegister',
-      username: username
-    })
-  })
-  .then(res => res.json())
-  .then(result => {
-    if (result.success) {
-      currentUser = username;
-      localStorage.setItem('lernapp_user', username);
-      loadAllData();
-    } else {
-      hideLoader();
-      showError(result.message);
+  try {
+    // Prüfe ob Benutzer existiert
+    const { data: existingUser } = await supabaseClient
+      .from('benutzer')
+      .select('*')
+      .eq('username', username)
+      .single();
+    
+    if (!existingUser) {
+      // Neuen Benutzer anlegen
+      await supabaseClient
+        .from('benutzer')
+        .insert([{ username: username }]);
     }
-  })
-  .catch(error => {
+    
+    currentUser = username;
+    localStorage.setItem('lernapp_user', username);
+    await loadAllData();
+  } catch (error) {
     hideLoader();
-    showError('Fehler: ' + error);
-  });
+    showError('Fehler beim Login: ' + error.message);
+  }
 }
 
-function loadAllData() {
+async function loadAllData() {
   showLoader();
   
-  Promise.all([
-    fetch(API_URL + '?action=getLernkarten').then(r => r.json()),
-    fetch(API_URL + '?action=getQuizDeAr').then(r => r.json()),
-    fetch(API_URL + '?action=getQuizAr').then(r => r.json()),
-    fetch(API_URL + '?action=getFortschritt&username=' + currentUser).then(r => r.json())
-  ])
-  .then(([karten, quizDeAr, quizAr, fort]) => {
-    alleLernkarten = karten;
-    alleQuizDeAr = quizDeAr;
-    alleQuizAr = quizAr;
-    fortschritt = fort;
+  try {
+    // Lade Lernkarten
+    const { data: karten } = await supabaseClient
+      .from('lernkarten')
+      .select('*')
+      .order('id');
+    
+    // Lade Quiz DE-AR
+    const { data: quizDeAr } = await supabaseClient
+      .from('quiz_de_ar')
+      .select('*')
+      .order('id');
+    
+    // Lade Quiz AR
+    const { data: quizAr } = await supabaseClient
+      .from('quiz_ar')
+      .select('*')
+      .order('id');
+    
+    // Lade Fortschritt
+    const { data: fort } = await supabaseClient
+      .from('fortschritt')
+      .select('*')
+      .eq('benutzer', currentUser);
+    
+    alleLernkarten = karten || [];
+    alleQuizDeAr = quizDeAr || [];
+    alleQuizAr = quizAr || [];
+    
+    // Fortschritt aufbereiten
+    fortschritt = { gelernteKarten: [] };
+    if (fort) {
+      fortschritt.gelernteKarten = fort
+        .filter(f => f.typ === 'lernkarte')
+        .map(f => ({ kapitel: f.kapitel, karteId: f.karte_id }));
+    }
+    
     hideLoader();
     showMainMenu();
-  })
-  .catch(error => {
+  } catch (error) {
     hideLoader();
-    showError('Fehler beim Laden: ' + error);
-  });
+    showError('Fehler beim Laden: ' + error.message);
+  }
 }
 
 function showMainMenu() {
@@ -133,55 +159,63 @@ function goBack() {
   }
 }
 
-function showStatistik() {
+async function showStatistik() {
   hideAllScreens();
   showLoader();
   
-  fetch(API_URL + '?action=getStatistik&username=' + currentUser)
-    .then(res => res.json())
-    .then(stats => {
-      hideLoader();
-      document.getElementById('statistikScreen').classList.remove('hidden');
+  try {
+    const { data: fort } = await supabaseClient
+      .from('fortschritt')
+      .select('*')
+      .eq('benutzer', currentUser);
+    
+    hideLoader();
+    document.getElementById('statistikScreen').classList.remove('hidden');
+    
+    let html = '';
+    
+    for (let i = 1; i <= 4; i++) {
+      const kapitelKarten = alleLernkarten.filter(k => k.kapitel === i);
+      const gelernt = fort?.filter(f => f.kapitel === i && f.typ === 'lernkarte').length || 0;
       
-      let html = '';
+      const quizEntries = fort?.filter(f => f.kapitel === i && f.typ === 'quiz') || [];
+      const quizRichtig = quizEntries.filter(q => q.status === 'richtig').length;
+      const quizGesamt = quizEntries.length;
       
-      for (let i = 1; i <= 4; i++) {
-        const kap = stats['kapitel' + i];
-        const prozent = kap.gesamt > 0 ? Math.round((kap.gelernt / kap.gesamt) * 100) : 0;
-        const quizProzent = kap.quizGesamt > 0 ? Math.round((kap.quizRichtig / kap.quizGesamt) * 100) : 0;
-        
-        html += '<div class="stats">';
-        html += '<h3>Kapitel ' + i + '</h3>';
-        
+      const prozent = kapitelKarten.length > 0 ? Math.round((gelernt / kapitelKarten.length) * 100) : 0;
+      const quizProzent = quizGesamt > 0 ? Math.round((quizRichtig / quizGesamt) * 100) : 0;
+      
+      html += '<div class="stats">';
+      html += '<h3>Kapitel ' + i + '</h3>';
+      
+      html += '<div class="stat-item">';
+      html += '<span>Lernkarten gelernt:</span>';
+      html += '<span><strong>' + gelernt + ' / ' + kapitelKarten.length + '</strong></span>';
+      html += '</div>';
+      
+      html += '<div class="progress-bar">';
+      html += '<div class="progress-fill" style="width: ' + prozent + '%">' + prozent + '%</div>';
+      html += '</div>';
+      
+      if (quizGesamt > 0) {
         html += '<div class="stat-item">';
-        html += '<span>Lernkarten gelernt:</span>';
-        html += '<span><strong>' + kap.gelernt + ' / ' + kap.gesamt + '</strong></span>';
+        html += '<span>Quiz richtig:</span>';
+        html += '<span><strong>' + quizRichtig + ' / ' + quizGesamt + '</strong></span>';
         html += '</div>';
         
         html += '<div class="progress-bar">';
-        html += '<div class="progress-fill" style="width: ' + prozent + '%">' + prozent + '%</div>';
-        html += '</div>';
-        
-        if (kap.quizGesamt > 0) {
-          html += '<div class="stat-item">';
-          html += '<span>Quiz richtig:</span>';
-          html += '<span><strong>' + kap.quizRichtig + ' / ' + kap.quizGesamt + '</strong></span>';
-          html += '</div>';
-          
-          html += '<div class="progress-bar">';
-          html += '<div class="progress-fill" style="width: ' + quizProzent + '%">' + quizProzent + '%</div>';
-          html += '</div>';
-        }
-        
+        html += '<div class="progress-fill" style="width: ' + quizProzent + '%">' + quizProzent + '%</div>';
         html += '</div>';
       }
       
-      document.getElementById('statistikContent').innerHTML = html;
-    })
-    .catch(error => {
-      hideLoader();
-      alert('Fehler beim Laden der Statistik: ' + error);
-    });
+      html += '</div>';
+    }
+    
+    document.getElementById('statistikContent').innerHTML = html;
+  } catch (error) {
+    hideLoader();
+    alert('Fehler beim Laden der Statistik: ' + error.message);
+  }
 }
 
 function showKapitelWahl(modus) {
@@ -285,10 +319,10 @@ function zeigeLernkarte() {
   html += '<div class="card" id="karteVorderseite" onclick="flipCard()">';
   
   if (currentModus === 'ar') {
-    html += '<div class="arabic">' + karte.frageAR + '</div>';
+    html += '<div class="arabic">' + karte.frage_ar + '</div>';
   } else {
-    html += '<div class="german">' + karte.frageDE + '</div>';
-    html += '<div class="arabic" style="margin-top: 15px;">' + karte.frageAR + '</div>';
+    html += '<div class="german">' + karte.frage_de + '</div>';
+    html += '<div class="arabic" style="margin-top: 15px;">' + karte.frage_ar + '</div>';
   }
   
   html += '</div>';
@@ -296,10 +330,10 @@ function zeigeLernkarte() {
   html += '<div class="card flipped hidden" id="karteRueckseite" onclick="flipCard()">';
   
   if (currentModus === 'ar') {
-    html += '<div class="arabic">' + karte.antwortAR + '</div>';
+    html += '<div class="arabic">' + karte.antwort_ar + '</div>';
   } else {
-    html += '<div class="german">' + karte.antwortDE + '</div>';
-    html += '<div class="arabic" style="margin-top: 15px;">' + karte.antwortAR + '</div>';
+    html += '<div class="german">' + karte.antwort_de + '</div>';
+    html += '<div class="arabic" style="margin-top: 15px;">' + karte.antwort_ar + '</div>';
   }
   
   html += '</div>';
@@ -324,27 +358,29 @@ function flipCard() {
   rueck.classList.toggle('hidden');
 }
 
-function markiereGelernt() {
+async function markiereGelernt() {
   const karte = currentKarten[currentIndex];
   
-  fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'markiereAlsGelernt',
-      username: currentUser,
-      kapitel: karte.kapitel,
-      karteId: karte.id
-    })
-  })
-  .then(res => res.json())
-  .then(() => {
+  try {
+    await supabaseClient
+      .from('fortschritt')
+      .insert([{
+        benutzer: currentUser,
+        kapitel: karte.kapitel,
+        typ: 'lernkarte',
+        karte_id: karte.id,
+        status: 'gelernt'
+      }]);
+    
     fortschritt.gelernteKarten.push({
       kapitel: karte.kapitel,
       karteId: karte.id
     });
+    
     zeigeLernkarte();
-  });
+  } catch (error) {
+    alert('Fehler: ' + error.message);
+  }
 }
 
 function naechsteKarte() {
@@ -421,47 +457,47 @@ function zeigeQuizFrage() {
   html += '<div class="karten-counter">Frage ' + (currentIndex + 1) + ' / ' + currentKarten.length + '</div>';
   
   if (currentQuizTyp === 'de_ar') {
-    html += '<div class="german" style="margin-bottom: 10px;">' + frage.frageDE + '</div>';
-    html += '<div class="arabic">' + frage.frageAR + '</div>';
+    html += '<div class="german" style="margin-bottom: 10px;">' + frage.frage_de + '</div>';
+    html += '<div class="arabic">' + frage.frage_ar + '</div>';
     
     html += '<div style="margin-top: 20px;">';
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'A\')">';
-    html += '<div class="german">A) ' + frage.aDE + '</div>';
-    html += '<div class="arabic">' + frage.aAR + '</div>';
+    html += '<div class="german">A) ' + frage.a_de + '</div>';
+    html += '<div class="arabic">' + frage.a_ar + '</div>';
     html += '</div>';
     
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'B\')">';
-    html += '<div class="german">B) ' + frage.bDE + '</div>';
-    html += '<div class="arabic">' + frage.bAR + '</div>';
+    html += '<div class="german">B) ' + frage.b_de + '</div>';
+    html += '<div class="arabic">' + frage.b_ar + '</div>';
     html += '</div>';
     
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'C\')">';
-    html += '<div class="german">C) ' + frage.cDE + '</div>';
-    html += '<div class="arabic">' + frage.cAR + '</div>';
+    html += '<div class="german">C) ' + frage.c_de + '</div>';
+    html += '<div class="arabic">' + frage.c_ar + '</div>';
     html += '</div>';
     
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'D\')">';
-    html += '<div class="german">D) ' + frage.dDE + '</div>';
-    html += '<div class="arabic">' + frage.dAR + '</div>';
+    html += '<div class="german">D) ' + frage.d_de + '</div>';
+    html += '<div class="arabic">' + frage.d_ar + '</div>';
     html += '</div>';
     html += '</div>';
   } else {
-    html += '<div class="arabic" style="font-size: 22px; margin-bottom: 20px;">' + frage.frageAR + '</div>';
+    html += '<div class="arabic" style="font-size: 22px; margin-bottom: 20px;">' + frage.frage_ar + '</div>';
     
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'A\')">';
-    html += '<div class="arabic">أ) ' + frage.aAR + '</div>';
+    html += '<div class="arabic">أ) ' + frage.a_ar + '</div>';
     html += '</div>';
     
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'B\')">';
-    html += '<div class="arabic">ب) ' + frage.bAR + '</div>';
+    html += '<div class="arabic">ب) ' + frage.b_ar + '</div>';
     html += '</div>';
     
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'C\')">';
-    html += '<div class="arabic">ج) ' + frage.cAR + '</div>';
+    html += '<div class="arabic">ج) ' + frage.c_ar + '</div>';
     html += '</div>';
     
     html += '<div class="quiz-option" onclick="pruefeAntwort(\'D\')">';
-    html += '<div class="arabic">د) ' + frage.dAR + '</div>';
+    html += '<div class="arabic">د) ' + frage.d_ar + '</div>';
     html += '</div>';
   }
   
@@ -471,7 +507,7 @@ function zeigeQuizFrage() {
   document.getElementById('quizContent').innerHTML = html;
 }
 
-function pruefeAntwort(antwort) {
+async function pruefeAntwort(antwort) {
   const frage = currentKarten[currentIndex];
   const richtig = antwort === frage.richtig;
   
@@ -501,18 +537,19 @@ function pruefeAntwort(antwort) {
   
   document.getElementById('quizFeedback').innerHTML = feedback;
   
-  fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'speichereQuizAntwort',
-      username: currentUser,
-      kapitel: frage.kapitel,
-      quizTyp: currentQuizTyp === 'de_ar' ? 'Quiz_DE_AR' : 'Quiz_AR',
-      frageId: frage.id,
-      richtig: richtig
-    })
-  });
+  try {
+    await supabaseClient
+      .from('fortschritt')
+      .insert([{
+        benutzer: currentUser,
+        kapitel: frage.kapitel,
+        typ: 'quiz',
+        karte_id: frage.id,
+        status: richtig ? 'richtig' : 'falsch'
+      }]);
+  } catch (error) {
+    console.error('Fehler beim Speichern:', error);
+  }
 }
 
 function naechsteQuizFrage() {
