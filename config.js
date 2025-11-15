@@ -1,35 +1,3 @@
-// Deine Google Apps Script Web-App URL
-const API_URL = 'https://script.google.com/macros/s/AKfycbwMgHdKikX6yd0D2ex9nu0yXqpVE69uCz9xpKj4kAD47oGJ7uqwTcrCtouaA4x4no_9/exec';
-
-// API Wrapper für Google Apps Script
-const google = {
-  script: {
-    run: {
-      withSuccessHandler: function(callback) {
-        this.successCallback = callback;
-        return this;
-      },
-      withFailureHandler: function(callback) {
-        this.failureCallback = callback;
-        return this;
-      }
-    }
-  }
-};
-
-// Füge alle Backend-Funktionen hinzu
-['loginOrRegister', 'getLernkarten', 'getQuizDeAr', 'getQuizAr', 'getFortschritt', 
- 'markiereAlsGelernt', 'speichereQuizAntwort', 'getStatistik'].forEach(funcName => {
-  google.script.run[funcName] = async function(...args) {
-    try {
-      const response = await fetch(API_URL + '?action=' + funcName, {
-        method: 'POST',
-        body: JSON.stringify({ args: args })
-      });
-      const data = await response.json();
-      if (this.successCallback) this.successCallback(data);
-    } catch (error) {
-      if (this.failureCallback) this.failureCallback(error);
-    }
-  };
-});
+// Supabase Konfiguration
+const SUPABASE_URL = 'https://grbrnkbowqpwmsmalxlc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyYnJua2Jvd3Fwd21zbWFseGxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMjEzOTIsImV4cCI6MjA3ODc5NzM5Mn0.X6FRfX5H3Fd0agUaMJlsUi6uY8YlS1OeZz4uxaW76fw';
